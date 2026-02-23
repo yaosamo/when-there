@@ -50,6 +50,7 @@ bootstrap();
 
 function bootstrap() {
   hydrateStateFromUrl();
+  ensureDefaultSelection();
   wireEvents();
   startLiveClock();
   render();
@@ -773,6 +774,18 @@ function dedupeZones(zones) {
     result.push(zone.id ? zone : ensureZoneEntry(zone));
   }
   return result;
+}
+
+function ensureDefaultSelection() {
+  if (state.selected || state.zones.length === 0) return;
+
+  const preferredZone =
+    state.zones.find((zone) => zone.title.toLowerCase() === "portland" && zone.timeZone === "America/Los_Angeles") ||
+    state.zones[0];
+
+  const now = Date.now();
+  const localHour = getLocalHourFromReference(preferredZone.timeZone, now);
+  state.selected = getReferenceFromLocalHour(preferredZone.timeZone, localHour, now, preferredZone.id);
 }
 
 async function shareCurrentState() {
