@@ -5,6 +5,7 @@
   "description": "Minimal local project bootstrap",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js"
+    "serve": "python3 -m http.server 4210",
+    "start": "python3 -m http.server 4210"
   }
 }

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>when-there</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main>
+        <div class="timeline-wrap">
+          <div id="timeline" class="timeline" aria-live="polite"></div>
+          <button id="add-zone-button" class="add-zone-fab" type="button" aria-label="Add time zone">+</button>
+          <div id="add-zone-panel" class="add-zone-panel" hidden>
+            <form id="add-zone-form" class="add-zone-form" autocomplete="off">
+              <label class="visually-hidden" for="add-zone-input">Add time zone</label>
+              <input
+                id="add-zone-input"
+                placeholder="Search city or timezone"
+                spellcheck="false"
+              />
+              <button type="submit">Add</button>
+            </form>
+            <div id="search-results" class="search-results" hidden></div>
+            <div class="suggested-wrap">
+              <p class="suggested-label">Suggested</p>
+              <div id="suggested-zones" class="suggested-zones"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <template id="column-template">
+      <section class="zone-column">
+        <header class="zone-header">
+          <div class="zone-title-wrap">
+            <h2 class="zone-title"></h2>
+            <p class="zone-subtitle"></p>
+          </div>
+          <button type="button" class="remove-zone" aria-label="Remove zone">×</button>
+        </header>
+        <div class="hours" role="list"></div>
+      </section>
+    </template>
+
+    <script src="./local-config.js"></script>
+    <script type="module" src="./src/index.js"></script>
+  </body>
+  </html>
