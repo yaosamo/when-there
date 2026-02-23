@@ -1,21 +1,25 @@
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_MS = 60 * 60 * 1000;
+const CASCADE_DELAY_MS = 50;
 
 const DEFAULT_ZONES = [
   { timeZone: "America/Los_Angeles", title: "Portland", subtitle: "United States, OR" },
   { timeZone: "America/Edmonton", title: "Calgary", subtitle: "Canada, AB" },
   { timeZone: "America/Chicago", title: "Houston", subtitle: "United States, TX" },
-  { timeZone: "Europe/Warsaw", title: "Warsaw", subtitle: "Poland" },
-  { timeZone: "Asia/Bangkok", title: "Bangkok", subtitle: "Thailand" }
+  { timeZone: "America/New_York", title: "Miami", subtitle: "United States, FL" },
+  { timeZone: "Europe/Warsaw", title: "Warsaw", subtitle: "Poland" }
 ];
 
+let nextZoneId = 1;
+
 const state = {
-  zones: [...DEFAULT_ZONES],
+  zones: DEFAULT_ZONES.map((zone) => ensureZoneEntry(zone)),
   selected: null
 };
 
 const timelineEl = document.querySelector("#timeline");
 const addZoneButton = document.querySelector("#add-zone-button");
+const shareStateButton = document.querySelector("#share-state-button");
 const addZonePanel = document.querySelector("#add-zone-panel");
 const addZoneForm = document.querySelector("#add-zone-form");
 const addZoneInput = document.querySelector("#add-zone-input");
@@ -39,10 +43,13 @@ let columnViews = [];
 let autocompleteTimer = 0;
 let autocompleteController = null;
 let searchItems = [];
+let shareSuccessTimer = 0;
+let dragState = null;
 
 bootstrap();
 
 function bootstrap() {
+  hydrateStateFromUrl();
   wireEvents();
   startLiveClock();
   render();
@@ -59,6 +66,9 @@ function wireEvents() {
       addZoneInput.focus();
       addZoneInput.select();
     }
+  });
+  shareStateButton.addEventListener("click", () => {
+    shareCurrentState();
   });
   addZoneForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -93,14 +103,21 @@ function render() {
     const subtitleEl = column.querySelector(".zone-subtitle");
     const removeButton = column.querySelector(".remove-zone");
     const hoursEl = column.querySelector(".hours");
+    column.dataset.zoneId = zone.id;
+    column.draggable = true;
+    column.classList.add("is-draggable");
 
     titleEl.textContent = zone.title;
     subtitleEl.textContent = zone.subtitle;
     removeButton.hidden = state.zones.length <= 1;
     removeButton.addEventListener("click", () => {
-      state.zones = state.zones.filter((z) => z.timeZone !== zone.timeZone);
+      state.zones = state.zones.filter((z) => z.id !== zone.id);
+      if (state.selected?.zoneId === zone.id) {
+        state.selected = null;
+      }
       render();
     });
+    wireColumnDragEvents(column, zone);
     const selectionBar = document.createElement("div");
     selectionBar.className = "selection-bar";
     selectionBar.setAttribute("aria-hidden", "true");
@@ -113,6 +130,7 @@ function render() {
       row.className = "hour-row";
       row.setAttribute("role", "listitem");
       row.dataset.timeZone = zone.timeZone;
+      row.dataset.zoneId = zone.id;
       row.dataset.hour = String(hour);
       row.innerHTML = `<span>${formatHour(hour)}</span>`;
       row.classList.add(isDayHour(hour) ? "tone-day" : "tone-night");
@@ -122,7 +140,7 @@ function render() {
       });
 
       row.addEventListener("click", () => {
-        state.selected = getReferenceFromLocalHour(zone.timeZone, hour, Date.now());
+        state.selected = getReferenceFromLocalHour(zone.timeZone, hour, Date.now(), zone.id);
         updateHighlights();
       });
 
@@ -135,17 +153,18 @@ function render() {
     liveClock.textContent = formatZoneNow(zone.timeZone);
     hoursEl.prepend(liveClock);
 
-    columnViews.push({ zone, hoursEl, rowsByHour, liveClock, selectionBar });
+    columnViews.push({ zone, column, hoursEl, rowsByHour, liveClock, selectionBar });
     timelineEl.append(column);
   }
 
   updateHighlights();
 }
 
-function getReferenceFromLocalHour(timeZone, localHour, anchorUtcMs = Date.now()) {
+function getReferenceFromLocalHour(timeZone, localHour, anchorUtcMs = Date.now(), zoneId = null) {
   const offsetHours = getOffsetMinutes(timeZone, anchorUtcMs) / 60;
   const utcHour = localHour - offsetHours;
   return {
+    zoneId,
     timeZone,
     localHour,
     utcMs: anchorUtcMs + (utcHour - new Date(anchorUtcMs).getUTCHours()) * HOUR_MS
@@ -286,21 +305,23 @@ function addZoneFromInput(zoneRaw = addZoneInput.value) {
     addZoneInput.reportValidity();
     return;
   }
-  if (state.zones.some((z) => z.timeZone === zone)) {
+  const built = ensureZoneEntry(buildZoneMeta(zone));
+  if (state.zones.some((z) => isSameZoneLabel(z, built))) {
     addZoneInput.setCustomValidity("Zone already added");
     addZoneInput.reportValidity();
     return;
   }
-  state.zones.push(buildZoneMeta(zone));
+  state.zones.push(built);
   addZoneInput.value = "";
   closeAddZonePanel();
   render();
 }
 
 function addZoneEntry(zoneEntry) {
-  if (!isValidTimeZone(zoneEntry.timeZone)) return false;
-  if (state.zones.some((z) => z.timeZone === zoneEntry.timeZone)) return false;
-  state.zones.push(zoneEntry);
+  const normalized = ensureZoneEntry(zoneEntry);
+  if (!isValidTimeZone(normalized.timeZone)) return false;
+  if (state.zones.some((z) => isSameZoneLabel(z, normalized))) return false;
+  state.zones.push(normalized);
   addZoneInput.value = "";
   closeAddZonePanel();
   render();
@@ -503,6 +524,83 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;");
 }
 
+function wireColumnDragEvents(column, zone) {
+  column.addEventListener("dragstart", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".remove-zone") || target?.closest(".hours")) {
+      event.preventDefault();
+      return;
+    }
+
+    dragState = { sourceZoneId: zone.id, overZoneId: null, position: null };
+    column.classList.add("is-dragging");
+
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", zone.id);
+    }
+  });
+
+  column.addEventListener("dragover", (event) => {
+    if (!dragState || dragState.sourceZoneId === zone.id) return;
+    event.preventDefault();
+
+    const rect = column.getBoundingClientRect();
+    const position = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+    dragState.overZoneId = zone.id;
+    dragState.position = position;
+    applyDropMarkers();
+  });
+
+  column.addEventListener("drop", (event) => {
+    if (!dragState) return;
+    event.preventDefault();
+
+    if (dragState.overZoneId && dragState.position) {
+      reorderZones(dragState.sourceZoneId, dragState.overZoneId, dragState.position);
+      clearDragVisualState();
+      render();
+      return;
+    }
+
+    clearDragVisualState();
+  });
+
+  column.addEventListener("dragend", () => {
+    clearDragVisualState();
+  });
+}
+
+function applyDropMarkers() {
+  for (const view of columnViews) {
+    view.column.classList.remove("drop-before", "drop-after");
+    if (!dragState || view.zone.id !== dragState.overZoneId) continue;
+    view.column.classList.add(dragState.position === "before" ? "drop-before" : "drop-after");
+  }
+}
+
+function clearDragVisualState() {
+  dragState = null;
+  for (const view of columnViews) {
+    view.column.classList.remove("is-dragging", "drop-before", "drop-after");
+  }
+}
+
+function reorderZones(sourceZoneId, targetZoneId, position) {
+  if (!sourceZoneId || !targetZoneId || sourceZoneId === targetZoneId) return;
+
+  const zones = [...state.zones];
+  const sourceIndex = zones.findIndex((z) => z.id === sourceZoneId);
+  const targetIndex = zones.findIndex((z) => z.id === targetZoneId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+
+  const [moved] = zones.splice(sourceIndex, 1);
+  const targetIndexAfterRemoval = zones.findIndex((z) => z.id === targetZoneId);
+  const insertIndex = position === "before" ? targetIndexAfterRemoval : targetIndexAfterRemoval + 1;
+  zones.splice(insertIndex, 0, moved);
+  state.zones = zones;
+}
+
 function updateClocks() {
   for (const view of columnViews) {
     view.liveClock.textContent = formatZoneNow(view.zone.timeZone);
@@ -511,7 +609,8 @@ function updateClocks() {
 
 function updateHighlights() {
   const reference = state.selected;
-  const source = state.selected ? "selected" : null;
+  const selectedIndex = reference ? columnViews.findIndex((view) => view.zone.id === reference.zoneId) : -1;
+  let cascadeStep = 0;
 
   for (const view of columnViews) {
     let activeLocalHour = null;
@@ -524,6 +623,7 @@ function updateHighlights() {
     }
 
     view.selectionBar.classList.remove("visible", "tone-day", "tone-night", "instant");
+    view.selectionBar.style.transitionDelay = "0ms, 0ms, 0ms";
 
     if (activeLocalHour === null) {
       continue;
@@ -532,7 +632,7 @@ function updateHighlights() {
     const row = view.rowsByHour[activeLocalHour];
     const toneClass = isDayHour(activeLocalHour) ? "tone-day" : "tone-night";
 
-    if (reference.timeZone === view.zone.timeZone) {
+    if (reference.zoneId === view.zone.id) {
       row.classList.add("is-active");
     } else {
       row.classList.add("is-link");
@@ -541,11 +641,14 @@ function updateHighlights() {
     // Move a persistent bar so the color appears to slide between rows.
     const y = row.offsetTop + 6;
     view.selectionBar.style.transform = `translateY(${y}px)`;
-    if (source === "hover") {
-      view.selectionBar.classList.add("instant");
-    }
+
+    const viewIndex = columnViews.indexOf(view);
+    const delay = viewIndex === selectedIndex ? 0 : ++cascadeStep * CASCADE_DELAY_MS;
+    view.selectionBar.style.transitionDelay = `${delay}ms, ${delay}ms, ${delay}ms`;
     view.selectionBar.classList.add("visible", toneClass);
   }
+
+  syncUrlState();
 }
 
 function extractRegionCode(timeZone) {
@@ -562,4 +665,152 @@ function extractRegionCode(timeZone) {
     "Asia/Bangkok": "TH"
   };
   return map[timeZone];
+}
+
+function ensureZoneEntry(zone) {
+  return {
+    id: zone.id || createZoneId(),
+    timeZone: zone.timeZone,
+    title: zone.title,
+    subtitle: zone.subtitle
+  };
+}
+
+function createZoneId() {
+  return `z${nextZoneId++}`;
+}
+
+function isSameZoneLabel(a, b) {
+  return a.timeZone === b.timeZone && a.title === b.title && a.subtitle === b.subtitle;
+}
+
+function syncUrlState() {
+  const stateParam = encodeShareState();
+  const url = new URL(window.location.href);
+  if (stateParam) {
+    url.searchParams.set("state", stateParam);
+  } else {
+    url.searchParams.delete("state");
+  }
+  window.history.replaceState(null, "", url);
+}
+
+function encodeShareState() {
+  const payload = {
+    zones: state.zones.map((zone) => ({
+      id: zone.id,
+      timeZone: zone.timeZone,
+      title: zone.title,
+      subtitle: zone.subtitle
+    })),
+    selected: state.selected
+      ? {
+          zoneId: state.selected.zoneId || null,
+          timeZone: state.selected.timeZone,
+          localHour: state.selected.localHour
+        }
+      : null
+  };
+
+  return base64UrlEncode(JSON.stringify(payload));
+}
+
+function hydrateStateFromUrl() {
+  const url = new URL(window.location.href);
+  const raw = url.searchParams.get("state");
+  if (!raw) return;
+
+  try {
+    const decoded = JSON.parse(base64UrlDecode(raw));
+    const zones = Array.isArray(decoded?.zones) ? decoded.zones : [];
+    const validZones = zones
+      .filter((zone) => zone && typeof zone.timeZone === "string" && isValidTimeZone(zone.timeZone))
+      .map((zone) => ({
+        id: typeof zone.id === "string" && zone.id ? zone.id : undefined,
+        timeZone: zone.timeZone,
+        title: typeof zone.title === "string" && zone.title.trim() ? zone.title.trim() : buildZoneMeta(zone.timeZone).title,
+        subtitle:
+          typeof zone.subtitle === "string" && zone.subtitle.trim()
+            ? zone.subtitle.trim()
+            : buildZoneMeta(zone.timeZone).subtitle
+      }));
+
+    if (validZones.length > 0) {
+      state.zones = dedupeZones(validZones.map((zone) => ensureZoneEntry(zone)));
+    }
+
+    const selected = decoded?.selected;
+    if (
+      selected &&
+      typeof selected.timeZone === "string" &&
+      Number.isInteger(selected.localHour) &&
+      selected.localHour >= 0 &&
+      selected.localHour <= 23 &&
+      state.zones.some((z) => (selected.zoneId && z.id === selected.zoneId) || z.timeZone === selected.timeZone)
+    ) {
+      const matchedZone =
+        state.zones.find((z) => selected.zoneId && z.id === selected.zoneId) ||
+        state.zones.find((z) => z.timeZone === selected.timeZone);
+      state.selected = getReferenceFromLocalHour(
+        matchedZone.timeZone,
+        selected.localHour,
+        Date.now(),
+        matchedZone.id
+      );
+    }
+  } catch {
+    // Ignore invalid shared state payloads.
+  }
+}
+
+function dedupeZones(zones) {
+  const seen = new Set();
+  const result = [];
+  for (const zone of zones) {
+    const key = zone.id || `${zone.timeZone}|${zone.title}|${zone.subtitle}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(zone.id ? zone : ensureZoneEntry(zone));
+  }
+  return result;
+}
+
+async function shareCurrentState() {
+  const url = buildShareUrl();
+
+  try {
+    await navigator.clipboard.writeText(url);
+    pulseShareSuccess();
+  } catch {
+    window.prompt("Copy link", url);
+  }
+}
+
+function buildShareUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("state", encodeShareState());
+  return url.toString();
+}
+
+function pulseShareSuccess() {
+  shareStateButton.classList.add("is-copied");
+  if (shareSuccessTimer) window.clearTimeout(shareSuccessTimer);
+  shareSuccessTimer = window.setTimeout(() => {
+    shareStateButton.classList.remove("is-copied");
+  }, 700);
+}
+
+function base64UrlEncode(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function base64UrlDecode(text) {
+  const normalized = text.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }

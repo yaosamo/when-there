@@ -8,10 +8,24 @@
   </head>
   <body>
     <div class="app-shell">
+      <div class="action-rail" aria-label="Actions">
+        <button id="add-zone-button" class="action-btn add-zone-fab" type="button" aria-label="Add time zone">+</button>
+        <button id="share-state-button" class="action-btn share-state-btn" type="button" aria-label="Share current setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <g class="icon-share">
+              <path d="M14 4h6v6" />
+              <path d="M10 14L20 4" />
+              <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" />
+            </g>
+            <path class="icon-check" d="M5 12.5l4.2 4.2L19 7" />
+          </svg>
+          <span class="action-tooltip">copy link to this view</span>
+        </button>
+      </div>
+
       <main>
         <div class="timeline-wrap">
           <div id="timeline" class="timeline" aria-live="polite"></div>
-          <button id="add-zone-button" class="add-zone-fab" type="button" aria-label="Add time zone">+</button>
           <div id="add-zone-panel" class="add-zone-panel" hidden>
             <form id="add-zone-form" class="add-zone-form" autocomplete="off">
               <label class="visually-hidden" for="add-zone-input">Add time zone</label>

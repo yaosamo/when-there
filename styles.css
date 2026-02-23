@@ -8,7 +8,7 @@
   --linked: #d1c033;
   --hover: rgba(255, 255, 255, 0.035);
   --border: rgba(255, 255, 255, 0.05);
-  --hover-speed-ms: 100ms;
+  --hover-speed-ms: 300ms;
 }
 
 * {
@@ -36,10 +36,17 @@ body {
   position: relative;
 }
 
-.add-zone-fab {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+.action-rail {
+  position: fixed;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 8px;
+  z-index: 8;
+}
+
+.action-btn {
   width: 34px;
   height: 34px;
   border-radius: 999px;
@@ -50,7 +57,6 @@ body {
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
-  z-index: 4;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 
@@ -59,17 +65,75 @@ body {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-.add-zone-fab:hover,
-.add-zone-fab:focus-visible {
+.action-btn:hover,
+.action-btn:focus-visible {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.16);
   outline: none;
 }
 
-.add-zone-panel {
+.share-state-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.share-state-btn .icon-check {
+  opacity: 0;
+}
+
+.share-state-btn .icon-share,
+.share-state-btn .icon-check {
+  transition: opacity 120ms ease;
+}
+
+.share-state-btn.is-copied {
+  border-color: rgba(84, 198, 119, 0.35);
+  background: rgba(84, 198, 119, 0.12);
+  color: #9cf0b2;
+}
+
+.share-state-btn.is-copied .icon-share {
+  opacity: 0;
+}
+
+.share-state-btn.is-copied .icon-check {
+  opacity: 1;
+}
+
+.action-tooltip {
   position: absolute;
-  top: 46px;
-  right: 8px;
+  left: 42px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 11, 13, 0.96);
+  color: rgba(232, 233, 236, 0.84);
+  border-radius: 7px;
+  padding: 5px 7px;
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.share-state-btn:hover .action-tooltip,
+.share-state-btn:focus-visible .action-tooltip {
+  opacity: 1;
+}
+
+.add-zone-panel {
+  position: fixed;
+  left: 56px;
+  top: 50%;
+  transform: translateY(-50%);
   width: min(280px, calc(100vw - 32px));
   padding: 8px;
   border-radius: 10px;
@@ -218,7 +282,7 @@ body {
   grid-auto-columns: minmax(180px, 1fr);
   gap: 4px;
   overflow-x: auto;
-  padding: 0 48px 8px 0;
+  padding: 0 12px 8px 50px;
 }
 
 .zone-column {
@@ -232,6 +296,39 @@ body {
 
 .zone-column:hover {
   border-color: rgba(255, 255, 255, 0.04);
+}
+
+.zone-column.is-draggable {
+  cursor: grab;
+}
+
+.zone-column.is-draggable:active {
+  cursor: grabbing;
+}
+
+.zone-column.is-dragging {
+  opacity: 0.32;
+}
+
+.zone-column.drop-before::before,
+.zone-column.drop-after::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: rgba(232, 233, 236, 0.8);
+  box-shadow: 0 0 0 1px rgba(10, 11, 13, 0.9);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.zone-column.drop-before::before {
+  left: -2px;
+}
+
+.zone-column.drop-after::before {
+  right: -2px;
 }
 
 .zone-header {
@@ -314,7 +411,7 @@ body {
   pointer-events: none;
   transform: translateY(0);
   transition:
-    transform var(--hover-speed-ms) ease,
+    transform var(--hover-speed-ms) ease-out,
     opacity var(--hover-speed-ms) linear,
     background-color var(--hover-speed-ms) linear;
 }
@@ -449,8 +546,16 @@ body {
 }
 
 @media (max-width: 900px) {
+  .action-rail {
+    left: 8px;
+  }
+
   .add-zone-panel {
-    right: 4px;
+    left: 50px;
+    top: auto;
+    bottom: 12px;
+    transform: none;
+    width: min(280px, calc(100vw - 62px));
   }
 
   .timeline {
@@ -458,7 +563,7 @@ body {
   }
 
   .app-shell {
-    padding: 12px;
+    padding: 12px 10px 12px 8px;
   }
 }
 
