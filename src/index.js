@@ -1,7 +1,13 @@
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_MS = 60 * 60 * 1000;
 const CASCADE_DELAY_MS = 50;
-const ROW_HIGHLIGHT_INSET_PX = 6;
+const ROW_HIGHLIGHT_INSET_PX = 4;
+const REMOVE_FADE_MS = 100;
+const REMOVE_MOVE_DELAY_MS = 60;
+const COLUMN_FILL_MS = 100;
+const ADD_FADE_MS = 100;
+const THEME_STORAGE_KEY = "when-there-theme";
+const THEME_MODES = ["system", "light", "dark"];
 
 const DEFAULT_ZONES = [
   { timeZone: "America/Los_Angeles", title: "Portland", subtitle: "United States, OR" },
@@ -15,20 +21,22 @@ let nextZoneId = 1;
 
 const state = {
   zones: DEFAULT_ZONES.map((zone) => ensureZoneEntry(zone)),
-  selected: null
+  selected: null,
+  editingZoneId: null
 };
 
 const timelineEl = document.querySelector("#timeline");
 const addZoneButton = document.querySelector("#add-zone-button");
+const themeToggleButton = document.querySelector("#theme-toggle-button");
 const shareStateButton = document.querySelector("#share-state-button");
 const addZonePanel = document.querySelector("#add-zone-panel");
 const addZoneForm = document.querySelector("#add-zone-form");
 const addZoneInput = document.querySelector("#add-zone-input");
 const searchResultsEl = document.querySelector("#search-results");
+const suggestedWrapEl = document.querySelector(".suggested-wrap");
 const suggestedZonesEl = document.querySelector("#suggested-zones");
 const columnTemplate = document.querySelector("#column-template");
 const formatterCache = new Map();
-const geoapifyKey = window.APP_CONFIG?.GEOAPIFY_KEY || "";
 const quickSuggestions = [
   "America/New_York",
   "America/Los_Angeles",
@@ -46,10 +54,15 @@ let autocompleteController = null;
 let searchItems = [];
 let shareSuccessTimer = 0;
 let dragState = null;
+let themeMode = "system";
+let fistBumpOverlayEl = null;
+let fistBumpOverlayTimer = 0;
+const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 bootstrap();
 
 function bootstrap() {
+  initThemeMode();
   hydrateStateFromUrl();
   ensureDefaultSelection();
   wireEvents();
@@ -59,15 +72,14 @@ function bootstrap() {
 
 function wireEvents() {
   addZoneButton.addEventListener("click", () => {
-    const willOpen = addZonePanel.hidden;
-    addZonePanel.hidden = !willOpen;
-    addZoneButton.classList.toggle("is-open", willOpen);
-    if (willOpen) {
-      renderSuggestedZones();
-      hideSearchResults();
-      addZoneInput.focus();
-      addZoneInput.select();
+    if (addZonePanel.hidden) {
+      openAddZonePanel();
+      return;
     }
+    closeAddZonePanel();
+  });
+  themeToggleButton.addEventListener("click", () => {
+    cycleThemeMode();
   });
   shareStateButton.addEventListener("click", () => {
     shareCurrentState();
@@ -94,9 +106,78 @@ function wireEvents() {
     closeAddZonePanel();
   });
   window.addEventListener("resize", updateHighlights);
+  if (typeof systemThemeQuery.addEventListener === "function") {
+    systemThemeQuery.addEventListener("change", handleSystemThemeChange);
+  } else if (typeof systemThemeQuery.addListener === "function") {
+    systemThemeQuery.addListener(handleSystemThemeChange);
+  }
 }
 
-function render() {
+function initThemeMode() {
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (THEME_MODES.includes(stored)) {
+    themeMode = stored;
+  }
+  applyThemeMode(themeMode);
+}
+
+function cycleThemeMode() {
+  const currentIndex = THEME_MODES.indexOf(themeMode);
+  const nextMode = THEME_MODES[(currentIndex + 1) % THEME_MODES.length];
+  applyThemeMode(nextMode);
+}
+
+function applyThemeMode(mode) {
+  themeMode = THEME_MODES.includes(mode) ? mode : "system";
+  const root = document.documentElement;
+  root.classList.toggle("theme-light", themeMode === "light");
+  root.classList.toggle("theme-dark", themeMode === "dark");
+
+  if (themeMode === "system") {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  } else {
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }
+
+  updateThemeToggleUi();
+}
+
+function handleSystemThemeChange() {
+  if (themeMode !== "system") return;
+  updateThemeToggleUi();
+}
+
+function updateThemeToggleUi() {
+  const glyphEl = themeToggleButton.querySelector(".theme-glyph");
+  const tooltipEl = themeToggleButton.querySelector(".action-tooltip");
+  const isSystemDark = systemThemeQuery.matches;
+  const effectiveMode = themeMode === "system" ? (isSystemDark ? "dark" : "light") : themeMode;
+  const glyph = themeMode === "system" ? "◐" : themeMode === "light" ? "◌" : "◑";
+
+  glyphEl.textContent = glyph;
+  themeToggleButton.dataset.themeMode = themeMode;
+  themeToggleButton.setAttribute("aria-label", `Theme mode: ${themeMode}. Click to switch.`);
+  tooltipEl.textContent = `theme: ${themeMode}${themeMode === "system" ? ` (${effectiveMode})` : ""}`;
+}
+
+function openAddZonePanel({ editingZoneId = null, initialValue = "", anchorEl = null } = {}) {
+  state.editingZoneId = editingZoneId;
+  addZonePanel.hidden = false;
+  addZoneButton.classList.add("is-open");
+  addZoneInput.setCustomValidity("");
+  addZoneInput.value = initialValue;
+  renderSuggestedZones(initialValue.trim());
+  hideSearchResults();
+  if (anchorEl) {
+    positionAddZonePanelNearAnchor(anchorEl);
+  } else {
+    resetAddZonePanelPosition();
+  }
+  addZoneInput.focus();
+  addZoneInput.select();
+}
+
+function render(previousRects = null, options = {}) {
   timelineEl.innerHTML = "";
   columnViews = [];
 
@@ -104,6 +185,7 @@ function render() {
     const column = columnTemplate.content.firstElementChild.cloneNode(true);
     const titleEl = column.querySelector(".zone-title");
     const subtitleEl = column.querySelector(".zone-subtitle");
+    const titleWrapEl = column.querySelector(".zone-title-wrap");
     const removeButton = column.querySelector(".remove-zone");
     const hoursEl = column.querySelector(".hours");
     column.dataset.zoneId = zone.id;
@@ -112,13 +194,21 @@ function render() {
 
     titleEl.textContent = zone.title;
     subtitleEl.textContent = zone.subtitle;
+    titleWrapEl.tabIndex = 0;
+    titleWrapEl.setAttribute("role", "button");
+    titleWrapEl.setAttribute("aria-label", `Change location for ${zone.title}`);
+    titleWrapEl.addEventListener("click", () => {
+      openAddZonePanel({ editingZoneId: zone.id, initialValue: zone.timeZone, anchorEl: titleWrapEl });
+    });
+    titleWrapEl.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openAddZonePanel({ editingZoneId: zone.id, initialValue: zone.timeZone, anchorEl: titleWrapEl });
+    });
     removeButton.hidden = state.zones.length <= 1;
-    removeButton.addEventListener("click", () => {
-      state.zones = state.zones.filter((z) => z.id !== zone.id);
-      if (state.selected?.zoneId === zone.id) {
-        state.selected = null;
-      }
-      render();
+    removeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeZoneWithAnimation(zone.id, column);
     });
     wireColumnDragEvents(column, zone);
     const selectionBar = document.createElement("div");
@@ -154,13 +244,127 @@ function render() {
     const liveClock = document.createElement("div");
     liveClock.className = "timezone-meta";
     liveClock.textContent = formatZoneNow(zone.timeZone);
-    hoursEl.prepend(liveClock);
+    titleWrapEl.append(liveClock);
 
     columnViews.push({ zone, column, hoursEl, rowsByHour, liveClock, selectionBar });
     timelineEl.append(column);
   }
 
   updateHighlights();
+  animateColumnFill(previousRects, options);
+}
+
+function captureColumnRects() {
+  const rects = new Map();
+  for (const view of columnViews) {
+    rects.set(view.zone.id, view.column.getBoundingClientRect());
+  }
+  return rects;
+}
+
+function animateColumnFill(previousRects, options = {}) {
+  const enterZoneId = options.enterZoneId || null;
+  const hasPreviousRects = previousRects instanceof Map && previousRects.size > 0;
+  if (!hasPreviousRects && !enterZoneId) return;
+
+  const shifted = [];
+  const entering = [];
+  for (const view of columnViews) {
+    if (!hasPreviousRects) {
+      if (enterZoneId && view.zone.id === enterZoneId) {
+        view.column.style.transition = "none";
+        view.column.style.opacity = "0";
+        entering.push(view.column);
+      }
+      continue;
+    }
+
+    const prev = previousRects.get(view.zone.id);
+    if (!prev) {
+      if (enterZoneId && view.zone.id === enterZoneId) {
+        view.column.style.transition = "none";
+        view.column.style.opacity = "0";
+        entering.push(view.column);
+      }
+      continue;
+    }
+    const next = view.column.getBoundingClientRect();
+    const dx = prev.left - next.left;
+    const dy = prev.top - next.top;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+
+    view.column.style.transition = "none";
+    view.column.style.transform = `translate(${dx}px, ${dy}px)`;
+    shifted.push(view.column);
+  }
+
+  if (shifted.length === 0 && entering.length === 0) return;
+
+  requestAnimationFrame(() => {
+    for (const column of shifted) {
+      column.style.transition = `transform ${COLUMN_FILL_MS}ms ease-out`;
+      column.style.transform = "";
+    }
+    for (const column of entering) {
+      column.style.transition = `opacity ${ADD_FADE_MS}ms ease-in`;
+      column.style.opacity = "1";
+    }
+    window.setTimeout(() => {
+      for (const column of [...shifted, ...entering]) {
+        column.style.transition = "";
+        column.style.opacity = "";
+      }
+    }, Math.max(COLUMN_FILL_MS, ADD_FADE_MS) + 20);
+  });
+}
+
+function removeZoneWithAnimation(zoneId, column) {
+  if (state.zones.length <= 1) return;
+  if (column.classList.contains("is-removing")) return;
+
+  const previousRects = captureColumnRects();
+  createRemovalGhost(column);
+  column.style.visibility = "hidden";
+  column.classList.add("is-removing");
+
+  window.setTimeout(() => {
+    state.zones = state.zones.filter((z) => z.id !== zoneId);
+    if (state.selected?.zoneId === zoneId) {
+      state.selected = null;
+    }
+    if (state.editingZoneId === zoneId) {
+      closeAddZonePanel();
+    }
+    render(previousRects);
+  }, REMOVE_MOVE_DELAY_MS);
+}
+
+function createRemovalGhost(column) {
+  const rect = column.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+
+  const ghost = column.cloneNode(true);
+  ghost.classList.remove("is-removing", "is-dragging", "drop-before", "drop-after");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.position = "fixed";
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.margin = "0";
+  ghost.style.zIndex = "30";
+  ghost.style.pointerEvents = "none";
+  ghost.style.transition = `opacity ${REMOVE_FADE_MS}ms ease-in`;
+  ghost.style.opacity = "1";
+  document.body.append(ghost);
+
+  requestAnimationFrame(() => {
+    ghost.style.opacity = "0";
+  });
+
+  window.setTimeout(() => {
+    ghost.remove();
+  }, REMOVE_FADE_MS + 30);
 }
 
 function getReferenceFromLocalHour(timeZone, localHour, anchorUtcMs = Date.now(), zoneId = null) {
@@ -309,36 +513,97 @@ function addZoneFromInput(zoneRaw = addZoneInput.value) {
     return;
   }
   const built = ensureZoneEntry(buildZoneMeta(zone));
-  if (state.zones.some((z) => isSameZoneLabel(z, built))) {
+  if (hasDuplicateZone(built, state.editingZoneId)) {
     addZoneInput.setCustomValidity("Zone already added");
     addZoneInput.reportValidity();
     return;
   }
-  state.zones.push(built);
-  addZoneInput.value = "";
-  closeAddZonePanel();
-  render();
+  applyZoneChange(built);
 }
 
 function addZoneEntry(zoneEntry) {
   const normalized = ensureZoneEntry(zoneEntry);
   if (!isValidTimeZone(normalized.timeZone)) return false;
-  if (state.zones.some((z) => isSameZoneLabel(z, normalized))) return false;
-  state.zones.push(normalized);
+  if (hasDuplicateZone(normalized, state.editingZoneId)) return false;
+  return applyZoneChange(normalized);
+}
+
+function hasDuplicateZone(candidate, excludeZoneId = null) {
+  return state.zones.some((z) => z.id !== excludeZoneId && isSameZoneLabel(z, candidate));
+}
+
+function applyZoneChange(zoneEntry) {
+  const normalized = ensureZoneEntry(zoneEntry);
+  const editingZoneId = state.editingZoneId;
+  let previousRects = null;
+  let enterZoneId = null;
+
+  if (editingZoneId) {
+    normalized.id = editingZoneId;
+    state.zones = state.zones.map((z) => (z.id === editingZoneId ? normalized : z));
+    if (state.selected?.zoneId === editingZoneId) {
+      state.selected = getReferenceFromLocalHour(
+        normalized.timeZone,
+        state.selected.localHour,
+        Date.now(),
+        editingZoneId
+      );
+    }
+  } else {
+    previousRects = captureColumnRects();
+    state.zones.push(normalized);
+    enterZoneId = normalized.id;
+  }
+
   addZoneInput.value = "";
   closeAddZonePanel();
-  render();
+  render(previousRects, { enterZoneId });
   return true;
 }
 
 function closeAddZonePanel() {
   addZonePanel.hidden = true;
   addZoneButton.classList.remove("is-open");
+  state.editingZoneId = null;
+  resetAddZonePanelPosition();
   hideSearchResults();
   if (autocompleteController) {
     autocompleteController.abort();
     autocompleteController = null;
   }
+}
+
+function resetAddZonePanelPosition() {
+  addZonePanel.style.left = "";
+  addZonePanel.style.top = "";
+  addZonePanel.style.bottom = "";
+  addZonePanel.style.transform = "";
+}
+
+function positionAddZonePanelNearAnchor(anchorEl) {
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const viewportPadding = 8;
+  const gap = 8;
+  const panelRect = addZonePanel.getBoundingClientRect();
+  const panelWidth = panelRect.width || 280;
+  const panelHeight = panelRect.height || 220;
+
+  let left = anchorRect.left + anchorRect.width + gap;
+  if (left + panelWidth > window.innerWidth - viewportPadding) {
+    left = anchorRect.right - panelWidth;
+  }
+  left = Math.max(viewportPadding, Math.min(left, window.innerWidth - panelWidth - viewportPadding));
+
+  let top = anchorRect.top - 4;
+  if (top + panelHeight > window.innerHeight - viewportPadding) {
+    top = window.innerHeight - panelHeight - viewportPadding;
+  }
+  top = Math.max(viewportPadding, top);
+
+  addZonePanel.style.left = `${Math.round(left)}px`;
+  addZonePanel.style.top = `${Math.round(top)}px`;
+  addZonePanel.style.bottom = "auto";
+  addZonePanel.style.transform = "none";
 }
 
 function renderSuggestedZones(query = "") {
@@ -361,8 +626,10 @@ function renderSuggestedZones(query = "") {
     }
   }
 
+  const visibleCandidates = candidates.slice(0, 8);
+  suggestedWrapEl.hidden = visibleCandidates.length === 0;
   suggestedZonesEl.innerHTML = "";
-  for (const zone of candidates.slice(0, 8)) {
+  for (const zone of visibleCandidates) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "suggested-zone";
@@ -400,15 +667,9 @@ async function runAutocompleteSearch(query) {
   autocompleteController = new AbortController();
 
   try {
-    const url = geoapifyKey ? new URL("https://api.geoapify.com/v1/geocode/autocomplete") : new URL("/api/geoapify-autocomplete", window.location.origin);
+    const url = new URL("/api/geoapify-autocomplete", window.location.origin);
     url.searchParams.set("text", query);
     url.searchParams.set("limit", "8");
-
-    if (geoapifyKey) {
-      url.searchParams.set("format", "json");
-      url.searchParams.set("lang", "en");
-      url.searchParams.set("apiKey", geoapifyKey);
-    }
 
     const response = await fetch(url, { signal: autocompleteController.signal });
     if (!response.ok) {
@@ -811,10 +1072,43 @@ function buildShareUrl() {
 
 function pulseShareSuccess() {
   shareStateButton.classList.add("is-copied");
+  triggerFistBumpOverlay();
   if (shareSuccessTimer) window.clearTimeout(shareSuccessTimer);
   shareSuccessTimer = window.setTimeout(() => {
     shareStateButton.classList.remove("is-copied");
   }, 700);
+}
+
+function triggerFistBumpOverlay() {
+  const overlay = ensureFistBumpOverlay();
+  overlay.classList.remove("is-active");
+  // Force restart of CSS animation sequence.
+  void overlay.offsetWidth;
+  overlay.classList.add("is-active");
+
+  if (fistBumpOverlayTimer) window.clearTimeout(fistBumpOverlayTimer);
+  fistBumpOverlayTimer = window.setTimeout(() => {
+    overlay.classList.remove("is-active");
+  }, 1200);
+}
+
+function ensureFistBumpOverlay() {
+  if (fistBumpOverlayEl) return fistBumpOverlayEl;
+
+  const overlay = document.createElement("div");
+  overlay.className = "fist-bump-overlay";
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.innerHTML = `
+    <div class="fist-bump-overlay__veil"></div>
+    <div class="fist-bump-overlay__flash"></div>
+    <div class="fist-bump-overlay__fists">
+      <span class="fist-bump-overlay__fist fist-bump-overlay__fist--left">🤜</span>
+      <span class="fist-bump-overlay__fist fist-bump-overlay__fist--right">🤛</span>
+    </div>
+  `;
+  document.body.append(overlay);
+  fistBumpOverlayEl = overlay;
+  return overlay;
 }
 
 function base64UrlEncode(text) {

@@ -3,19 +3,62 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>when-there</title>
+    <title>Time Zone Converter | World Time Comparison by City | When There</title>
+    <meta
+      name="description"
+      content="Compare world time zones side by side and convert hours across cities. Fast visual time zone converter for planning calls, meetings, and remote work."
+    />
+    <meta
+      name="keywords"
+      content="time zone converter, world clock, time zone comparison, meeting planner, timezone by city, convert time zones, remote work time"
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="application-name" content="When There" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b0d" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f5f8" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Time Zone Converter | World Time Comparison by City" />
+    <meta
+      property="og:description"
+      content="Compare time zones side by side and convert hours across cities with a fast visual timeline."
+    />
+    <meta property="og:site_name" content="When There" />
+    <meta property="og:url" content="https://time.yaosamo.com/" />
+    <meta property="og:image" content="https://time.yaosamo.com/og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Time Zone Converter | World Time Comparison by City" />
+    <meta
+      name="twitter:description"
+      content="Visual time zone converter for comparing cities and planning meetings across time zones."
+    />
+    <meta name="twitter:image" content="https://time.yaosamo.com/og.jpg" />
+    <link rel="canonical" href="https://time.yaosamo.com/" />
+    <link rel="icon" href="/fav.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
+      <p class="site-credit">
+        Designed by Yaosamo
+      </p>
       <div class="action-rail" aria-label="Actions">
-        <button id="add-zone-button" class="action-btn add-zone-fab" type="button" aria-label="Add time zone">+</button>
+        <button id="add-zone-button" class="action-btn add-zone-fab" type="button" aria-label="Add time zone">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="lucide lucide-plus-icon lucide-plus">
+            <path d="M5 12h14" />
+            <path d="M12 5v14" />
+          </svg>
+          <span class="action-tooltip">add time zone</span>
+        </button>
+        <button id="theme-toggle-button" class="action-btn theme-toggle-btn" type="button" aria-label="Theme mode">
+          <span class="theme-glyph" aria-hidden="true">◐</span>
+          <span class="action-tooltip">theme: system</span>
+        </button>
         <button id="share-state-button" class="action-btn share-state-btn" type="button" aria-label="Share current setup">
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="lucide lucide-link-icon lucide-link">
             <g class="icon-share">
-              <path d="M14 4h6v6" />
-              <path d="M10 14L20 4" />
-              <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" />
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
             </g>
             <path class="icon-check" d="M5 12.5l4.2 4.2L19 7" />
           </svg>
@@ -59,7 +102,10 @@
       </section>
     </template>
 
-    <script src="./local-config.js"></script>
+    <script>
+      window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
     <script type="module" src="./src/index.js"></script>
   </body>
   </html>
