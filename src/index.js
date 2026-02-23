@@ -360,16 +360,11 @@ function scheduleAutocompleteSearch(query) {
   if (autocompleteTimer) window.clearTimeout(autocompleteTimer);
   autocompleteTimer = 0;
 
-  if (!addZonePanel.hidden && query.length >= 2 && geoapifyKey) {
+  if (!addZonePanel.hidden && query.length >= 2) {
     showSearchStatus("Searching...");
     autocompleteTimer = window.setTimeout(() => {
       runAutocompleteSearch(query);
     }, 140);
-    return;
-  }
-
-  if (!geoapifyKey && query.length >= 2) {
-    showSearchStatus("Geoapify key missing");
     return;
   }
 
@@ -381,12 +376,15 @@ async function runAutocompleteSearch(query) {
   autocompleteController = new AbortController();
 
   try {
-    const url = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
+    const url = geoapifyKey ? new URL("https://api.geoapify.com/v1/geocode/autocomplete") : new URL("/api/geoapify-autocomplete", window.location.origin);
     url.searchParams.set("text", query);
-    url.searchParams.set("format", "json");
     url.searchParams.set("limit", "8");
-    url.searchParams.set("lang", "en");
-    url.searchParams.set("apiKey", geoapifyKey);
+
+    if (geoapifyKey) {
+      url.searchParams.set("format", "json");
+      url.searchParams.set("lang", "en");
+      url.searchParams.set("apiKey", geoapifyKey);
+    }
 
     const response = await fetch(url, { signal: autocompleteController.signal });
     if (!response.ok) {
