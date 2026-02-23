@@ -1,0 +1,10 @@
+{
+  "name": "when-there",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal local project bootstrap",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}
