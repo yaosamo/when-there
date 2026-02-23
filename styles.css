@@ -9,6 +9,8 @@
   --hover: rgba(255, 255, 255, 0.035);
   --border: rgba(255, 255, 255, 0.05);
   --hover-speed-ms: 300ms;
+  --timeline-type-size: clamp(0.75rem, 0.7rem + 0.2vh, 0.95rem);
+  --timeline-type-size: clamp(0.75rem, 0.7rem + 0.2dvh, 0.95rem);
 }
 
 * {
@@ -306,6 +308,7 @@ main {
   position: relative;
   display: flex;
   flex-direction: column;
+  font-size: var(--timeline-type-size);
   min-width: 180px;
   border-radius: 12px;
   background: transparent;
@@ -369,7 +372,7 @@ main {
 
 .zone-title {
   margin: 0;
-  font-size: 12px;
+  font-size: 1em;
   line-height: 1.15;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -379,7 +382,7 @@ main {
 .zone-subtitle {
   margin: 3px 0 0;
   color: rgba(232, 233, 236, 0.66);
-  font-size: 10px;
+  font-size: 0.833em;
   line-height: 1.15;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -470,7 +473,7 @@ main {
   background: transparent;
   color: var(--dim);
   font: inherit;
-  font-size: 12px;
+  font-size: 1em;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   cursor: pointer;
@@ -550,7 +553,7 @@ main {
 .timezone-meta {
   margin-top: 4px;
   color: rgba(232, 233, 236, 0.34);
-  font-size: 9px;
+  font-size: 0.75em;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   text-align: center;

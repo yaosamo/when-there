@@ -1,6 +1,7 @@
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_MS = 60 * 60 * 1000;
 const CASCADE_DELAY_MS = 50;
+const ROW_HIGHLIGHT_INSET_PX = 6;
 
 const DEFAULT_ZONES = [
   { timeZone: "America/Los_Angeles", title: "Portland", subtitle: "United States, OR" },
@@ -92,6 +93,7 @@ function wireEvents() {
     if (addZonePanel.contains(target) || addZoneButton.contains(target)) return;
     closeAddZonePanel();
   });
+  window.addEventListener("resize", updateHighlights);
 }
 
 function render() {
@@ -640,7 +642,9 @@ function updateHighlights() {
     }
 
     // Move a persistent bar so the color appears to slide between rows.
-    const y = row.offsetTop + 6;
+    const y = row.offsetTop + ROW_HIGHLIGHT_INSET_PX;
+    const barHeight = Math.max(0, row.offsetHeight - ROW_HIGHLIGHT_INSET_PX * 2);
+    view.selectionBar.style.height = `${barHeight}px`;
     view.selectionBar.style.transform = `translateY(${y}px)`;
 
     const viewIndex = columnViews.indexOf(view);
