@@ -7,6 +7,7 @@ const REMOVE_MOVE_DELAY_MS = 60;
 const COLUMN_FILL_MS = 100;
 const ADD_FADE_MS = 100;
 const THEME_STORAGE_KEY = "when-there-theme";
+const LOCAL_APP_STATE_STORAGE_KEY = "when-there-local-app-state";
 const ZONES_PREFERENCE_STORAGE_KEY = "when-there-zones-preference";
 const VIEWER_ZONE_OVERRIDE_STORAGE_KEY = "when-there-viewer-zone-override";
 const THEME_MODES = ["system", "light", "dark"];
@@ -73,10 +74,16 @@ bootstrap();
 async function bootstrap() {
   initThemeMode();
   const viewerContext = await hydrateHourFormatFromServer();
+  const hasSharedState = urlHasSharedStateParam();
   applyViewerDrivenDefaults(viewerContext);
-  const hasStoredZonePreference = applyStoredZonePreferences();
-  if (!hasStoredZonePreference) {
-    applyStoredViewerZoneOverride();
+  if (!hasSharedState) {
+    const hasStoredLocalAppState = applyStoredLocalAppState();
+    if (!hasStoredLocalAppState) {
+      const hasStoredZonePreference = applyStoredZonePreferences();
+      if (!hasStoredZonePreference) {
+        applyStoredViewerZoneOverride();
+      }
+    }
   }
   hydrateStateFromUrl();
   ensureDefaultSelection();
@@ -257,6 +264,7 @@ function render(previousRects = null, options = {}) {
       row.addEventListener("click", () => {
         state.selected = getReferenceFromLocalHour(zone.timeZone, hour, Date.now(), zone.id);
         updateHighlights();
+        persistLocalAppStateFromCurrentState();
       });
 
       rowsByHour[hour] = row;
@@ -352,14 +360,15 @@ function removeZoneWithAnimation(zoneId, column) {
 
   window.setTimeout(() => {
     state.zones = state.zones.filter((z) => z.id !== zoneId);
-    persistZonePreferencesFromCurrentState();
-    persistViewerZoneOverrideFromCurrentState();
     if (state.selected?.zoneId === zoneId) {
       state.selected = null;
     }
     if (state.editingZoneId === zoneId) {
       closeAddZonePanel();
     }
+    persistLocalAppStateFromCurrentState();
+    persistZonePreferencesFromCurrentState();
+    persistViewerZoneOverrideFromCurrentState();
     render(previousRects);
   }, REMOVE_MOVE_DELAY_MS);
 }
@@ -566,6 +575,35 @@ function applyStoredViewerZoneOverride() {
   state.zones = [ensureZoneEntry({ ...stored, id: first?.id }), ...state.zones.slice(1)];
   state.selected = null;
   console.info("[when-there] first city source=localStorage title=%s tz=%s", stored.title, stored.timeZone);
+}
+
+function applyStoredLocalAppState() {
+  let raw = "";
+  try {
+    raw = window.localStorage.getItem(LOCAL_APP_STATE_STORAGE_KEY) || "";
+  } catch {
+    return false;
+  }
+  if (!raw) return false;
+
+  try {
+    const decoded = JSON.parse(raw);
+    const applied = applyStatePayload(decoded);
+    if (applied) {
+      console.info("[when-there] state source=localStorage");
+    }
+    return applied;
+  } catch {
+    return false;
+  }
+}
+
+function persistLocalAppStateFromCurrentState() {
+  try {
+    window.localStorage.setItem(LOCAL_APP_STATE_STORAGE_KEY, JSON.stringify(buildStatePayload()));
+  } catch {
+    // ignore storage write failures
+  }
 }
 
 function applyStoredZonePreferences() {
@@ -828,6 +866,7 @@ function applyZoneChange(zoneEntry) {
 
   addZoneInput.value = "";
   closeAddZonePanel();
+  persistLocalAppStateFromCurrentState();
   persistZonePreferencesFromCurrentState();
   persistViewerZoneOverrideFromCurrentState();
   render(previousRects, { enterZoneId });
@@ -1136,6 +1175,7 @@ function reorderZones(sourceZoneId, targetZoneId, position) {
   const insertIndex = position === "before" ? targetIndexAfterRemoval : targetIndexAfterRemoval + 1;
   zones.splice(insertIndex, 0, moved);
   state.zones = zones;
+  persistLocalAppStateFromCurrentState();
   persistZonePreferencesFromCurrentState();
   persistViewerZoneOverrideFromCurrentState();
 }
@@ -1271,8 +1311,16 @@ function syncUrlState() {
   window.history.replaceState(null, "", url);
 }
 
-function encodeShareState() {
-  const payload = {
+function urlHasSharedStateParam() {
+  try {
+    return new URL(window.location.href).searchParams.has("state");
+  } catch {
+    return false;
+  }
+}
+
+function buildStatePayload() {
+  return {
     zones: state.zones.map((zone) => ({
       id: zone.id,
       timeZone: zone.timeZone,
@@ -1287,8 +1335,10 @@ function encodeShareState() {
         }
       : null
   };
+}
 
-  return base64UrlEncode(JSON.stringify(payload));
+function encodeShareState() {
+  return base64UrlEncode(JSON.stringify(buildStatePayload()));
 }
 
 function hydrateStateFromUrl() {
@@ -1298,45 +1348,54 @@ function hydrateStateFromUrl() {
 
   try {
     const decoded = JSON.parse(base64UrlDecode(raw));
-    const zones = Array.isArray(decoded?.zones) ? decoded.zones : [];
-    const validZones = zones
-      .filter((zone) => zone && typeof zone.timeZone === "string" && isValidTimeZone(zone.timeZone))
-      .map((zone) => ({
-        id: typeof zone.id === "string" && zone.id ? zone.id : undefined,
-        timeZone: zone.timeZone,
-        title: typeof zone.title === "string" && zone.title.trim() ? zone.title.trim() : buildZoneMeta(zone.timeZone).title,
-        subtitle:
-          typeof zone.subtitle === "string" && zone.subtitle.trim()
-            ? zone.subtitle.trim()
-            : buildZoneMeta(zone.timeZone).subtitle
-      }));
-
-    if (validZones.length > 0) {
-      state.zones = dedupeZones(validZones.map((zone) => ensureZoneEntry(zone)));
-    }
-
-    const selected = decoded?.selected;
-    if (
-      selected &&
-      typeof selected.timeZone === "string" &&
-      Number.isInteger(selected.localHour) &&
-      selected.localHour >= 0 &&
-      selected.localHour <= 23 &&
-      state.zones.some((z) => (selected.zoneId && z.id === selected.zoneId) || z.timeZone === selected.timeZone)
-    ) {
-      const matchedZone =
-        state.zones.find((z) => selected.zoneId && z.id === selected.zoneId) ||
-        state.zones.find((z) => z.timeZone === selected.timeZone);
-      state.selected = getReferenceFromLocalHour(
-        matchedZone.timeZone,
-        selected.localHour,
-        Date.now(),
-        matchedZone.id
-      );
-    }
+    applyStatePayload(decoded);
   } catch {
     // Ignore invalid shared state payloads.
   }
+}
+
+function applyStatePayload(decoded) {
+  const zones = Array.isArray(decoded?.zones) ? decoded.zones : [];
+  const validZones = zones
+    .filter((zone) => zone && typeof zone.timeZone === "string" && isValidTimeZone(zone.timeZone))
+    .map((zone) => ({
+      id: typeof zone.id === "string" && zone.id ? zone.id : undefined,
+      timeZone: zone.timeZone,
+      title: typeof zone.title === "string" && zone.title.trim() ? zone.title.trim() : buildZoneMeta(zone.timeZone).title,
+      subtitle:
+        typeof zone.subtitle === "string" && zone.subtitle.trim()
+          ? zone.subtitle.trim()
+          : buildZoneMeta(zone.timeZone).subtitle
+    }));
+
+  let applied = false;
+  if (validZones.length > 0) {
+    state.zones = dedupeZones(validZones.map((zone) => ensureZoneEntry(zone)));
+    applied = true;
+  }
+
+  const selected = decoded?.selected;
+  if (
+    selected &&
+    typeof selected.timeZone === "string" &&
+    Number.isInteger(selected.localHour) &&
+    selected.localHour >= 0 &&
+    selected.localHour <= 23 &&
+    state.zones.some((z) => (selected.zoneId && z.id === selected.zoneId) || z.timeZone === selected.timeZone)
+  ) {
+    const matchedZone =
+      state.zones.find((z) => selected.zoneId && z.id === selected.zoneId) ||
+      state.zones.find((z) => z.timeZone === selected.timeZone);
+    state.selected = getReferenceFromLocalHour(
+      matchedZone.timeZone,
+      selected.localHour,
+      Date.now(),
+      matchedZone.id
+    );
+    applied = true;
+  }
+
+  return applied;
 }
 
 function dedupeZones(zones) {
