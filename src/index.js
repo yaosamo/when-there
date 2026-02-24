@@ -7,6 +7,7 @@ const REMOVE_MOVE_DELAY_MS = 60;
 const COLUMN_FILL_MS = 100;
 const ADD_FADE_MS = 100;
 const THEME_STORAGE_KEY = "when-there-theme";
+const ZONES_PREFERENCE_STORAGE_KEY = "when-there-zones-preference";
 const VIEWER_ZONE_OVERRIDE_STORAGE_KEY = "when-there-viewer-zone-override";
 const THEME_MODES = ["system", "light", "dark"];
 const EUROPE_REGION_CODES = new Set([
@@ -73,7 +74,10 @@ async function bootstrap() {
   initThemeMode();
   const viewerContext = await hydrateHourFormatFromServer();
   applyViewerDrivenDefaults(viewerContext);
-  applyStoredViewerZoneOverride();
+  const hasStoredZonePreference = applyStoredZonePreferences();
+  if (!hasStoredZonePreference) {
+    applyStoredViewerZoneOverride();
+  }
   hydrateStateFromUrl();
   ensureDefaultSelection();
   wireEvents();
@@ -348,6 +352,7 @@ function removeZoneWithAnimation(zoneId, column) {
 
   window.setTimeout(() => {
     state.zones = state.zones.filter((z) => z.id !== zoneId);
+    persistZonePreferencesFromCurrentState();
     persistViewerZoneOverrideFromCurrentState();
     if (state.selected?.zoneId === zoneId) {
       state.selected = null;
@@ -563,6 +568,65 @@ function applyStoredViewerZoneOverride() {
   console.info("[when-there] first city source=localStorage title=%s tz=%s", stored.title, stored.timeZone);
 }
 
+function applyStoredZonePreferences() {
+  const storedZones = readStoredZonePreferences();
+  if (!storedZones || storedZones.length === 0) return false;
+
+  state.zones = dedupeZones(storedZones.map((zone) => ensureZoneEntry(zone)));
+  state.selected = null;
+  console.info("[when-there] zones source=localStorage count=%s", state.zones.length);
+  return true;
+}
+
+function persistZonePreferencesFromCurrentState() {
+  if (!Array.isArray(state.zones) || state.zones.length === 0) return;
+
+  const payload = state.zones.map((zone) => ({
+    timeZone: zone.timeZone,
+    title: zone.title,
+    subtitle: zone.subtitle
+  }));
+
+  try {
+    window.localStorage.setItem(ZONES_PREFERENCE_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore storage write failures
+  }
+}
+
+function readStoredZonePreferences() {
+  let raw = "";
+  try {
+    raw = window.localStorage.getItem(ZONES_PREFERENCE_STORAGE_KEY) || "";
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+
+    const zones = parsed
+      .filter((zone) => zone && typeof zone.timeZone === "string" && isValidTimeZone(zone.timeZone))
+      .map((zone) => ({
+        timeZone: zone.timeZone,
+        title:
+          typeof zone.title === "string" && zone.title.trim()
+            ? zone.title.trim()
+            : buildZoneMeta(zone.timeZone).title,
+        subtitle:
+          typeof zone.subtitle === "string" && zone.subtitle.trim()
+            ? zone.subtitle.trim()
+            : buildZoneMeta(zone.timeZone).subtitle
+      }));
+
+    return zones.length > 0 ? zones : null;
+  } catch {
+    return null;
+  }
+}
+
 function persistViewerZoneOverrideFromCurrentState() {
   const first = state.zones[0];
   if (!first) return;
@@ -764,6 +828,7 @@ function applyZoneChange(zoneEntry) {
 
   addZoneInput.value = "";
   closeAddZonePanel();
+  persistZonePreferencesFromCurrentState();
   persistViewerZoneOverrideFromCurrentState();
   render(previousRects, { enterZoneId });
   return true;
@@ -1071,6 +1136,7 @@ function reorderZones(sourceZoneId, targetZoneId, position) {
   const insertIndex = position === "before" ? targetIndexAfterRemoval : targetIndexAfterRemoval + 1;
   zones.splice(insertIndex, 0, moved);
   state.zones = zones;
+  persistZonePreferencesFromCurrentState();
   persistViewerZoneOverrideFromCurrentState();
 }
 

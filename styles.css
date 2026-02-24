@@ -682,6 +682,12 @@ main {
   }
 }
 
+@media (hover: none), (pointer: coarse) {
+  .remove-zone {
+    opacity: 1;
+  }
+}
+
 .hours {
   position: relative;
   display: flex;
