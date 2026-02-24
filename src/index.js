@@ -7,6 +7,7 @@ const REMOVE_MOVE_DELAY_MS = 60;
 const COLUMN_FILL_MS = 100;
 const ADD_FADE_MS = 100;
 const THEME_STORAGE_KEY = "when-there-theme";
+const VIEWER_ZONE_OVERRIDE_STORAGE_KEY = "when-there-viewer-zone-override";
 const THEME_MODES = ["system", "light", "dark"];
 const EUROPE_REGION_CODES = new Set([
   "AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
@@ -72,6 +73,7 @@ async function bootstrap() {
   initThemeMode();
   const viewerContext = await hydrateHourFormatFromServer();
   applyViewerDrivenDefaults(viewerContext);
+  applyStoredViewerZoneOverride();
   hydrateStateFromUrl();
   ensureDefaultSelection();
   wireEvents();
@@ -346,6 +348,7 @@ function removeZoneWithAnimation(zoneId, column) {
 
   window.setTimeout(() => {
     state.zones = state.zones.filter((z) => z.id !== zoneId);
+    persistViewerZoneOverrideFromCurrentState();
     if (state.selected?.zoneId === zoneId) {
       state.selected = null;
     }
@@ -514,6 +517,20 @@ function applyViewerDrivenDefaults(viewerContext) {
 function buildViewerDefaultZone(viewerContext) {
   if (!viewerContext || typeof viewerContext !== "object") return null;
 
+  const geoapifyPlace = viewerContext.geoapifyPlace;
+  if (
+    geoapifyPlace &&
+    typeof geoapifyPlace === "object" &&
+    typeof geoapifyPlace.timeZone === "string" &&
+    isValidTimeZone(geoapifyPlace.timeZone)
+  ) {
+    return {
+      timeZone: geoapifyPlace.timeZone,
+      title: String(geoapifyPlace.title || "").trim() || buildZoneMeta(geoapifyPlace.timeZone).title,
+      subtitle: String(geoapifyPlace.subtitle || "").trim() || buildZoneMeta(geoapifyPlace.timeZone).subtitle
+    };
+  }
+
   const timeZone = String(viewerContext.timeZone || "").trim();
   if (!timeZone || !isValidTimeZone(timeZone)) return null;
 
@@ -534,6 +551,64 @@ function buildViewerDefaultZone(viewerContext) {
     title: city || fallbackMeta.title,
     subtitle
   };
+}
+
+function applyStoredViewerZoneOverride() {
+  const stored = readViewerZoneOverride();
+  if (!stored || state.zones.length === 0) return;
+
+  const first = state.zones[0];
+  state.zones = [ensureZoneEntry({ ...stored, id: first?.id }), ...state.zones.slice(1)];
+  state.selected = null;
+  console.info("[when-there] first city source=localStorage title=%s tz=%s", stored.title, stored.timeZone);
+}
+
+function persistViewerZoneOverrideFromCurrentState() {
+  const first = state.zones[0];
+  if (!first) return;
+
+  try {
+    window.localStorage.setItem(
+      VIEWER_ZONE_OVERRIDE_STORAGE_KEY,
+      JSON.stringify({
+        timeZone: first.timeZone,
+        title: first.title,
+        subtitle: first.subtitle
+      })
+    );
+  } catch {
+    // ignore storage write failures
+  }
+}
+
+function readViewerZoneOverride() {
+  let raw = "";
+  try {
+    raw = window.localStorage.getItem(VIEWER_ZONE_OVERRIDE_STORAGE_KEY) || "";
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.timeZone !== "string" || !isValidTimeZone(parsed.timeZone)) return null;
+
+    return {
+      timeZone: parsed.timeZone,
+      title:
+        typeof parsed.title === "string" && parsed.title.trim()
+          ? parsed.title.trim()
+          : buildZoneMeta(parsed.timeZone).title,
+      subtitle:
+        typeof parsed.subtitle === "string" && parsed.subtitle.trim()
+          ? parsed.subtitle.trim()
+          : buildZoneMeta(parsed.timeZone).subtitle
+    };
+  } catch {
+    return null;
+  }
 }
 
 function detectUserHourFormat() {
@@ -689,6 +764,7 @@ function applyZoneChange(zoneEntry) {
 
   addZoneInput.value = "";
   closeAddZonePanel();
+  persistViewerZoneOverrideFromCurrentState();
   render(previousRects, { enterZoneId });
   return true;
 }
@@ -995,6 +1071,7 @@ function reorderZones(sourceZoneId, targetZoneId, position) {
   const insertIndex = position === "before" ? targetIndexAfterRemoval : targetIndexAfterRemoval + 1;
   zones.splice(insertIndex, 0, moved);
   state.zones = zones;
+  persistViewerZoneOverrideFromCurrentState();
 }
 
 function updateClocks() {
