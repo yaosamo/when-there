@@ -12,23 +12,37 @@ export default function handler(req, res) {
   }
 
   const countryCode = getCountryCodeFromHeaders(req.headers);
+  const regionCode = getHeader(req.headers, "x-vercel-ip-country-region");
+  const city = decodeHeaderValue(getHeader(req.headers, "x-vercel-ip-city"));
+  const timeZone = getHeader(req.headers, "x-vercel-ip-timezone");
   const hourFormat = countryCode && EUROPE_REGION_CODES.has(countryCode) ? "24h" : "12h";
 
   res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=3600");
   return res.status(200).json({
+    city: city || null,
     countryCode: countryCode || null,
+    regionCode: regionCode || null,
+    timeZone: timeZone || null,
     hourFormat,
     source: countryCode ? "ip-country-header" : "fallback-default"
   });
 }
 
 function getCountryCodeFromHeaders(headers = {}) {
-  const raw =
-    headers["x-vercel-ip-country"] ||
-    headers["cf-ipcountry"] ||
-    headers["x-country-code"] ||
-    "";
-
-  const code = String(Array.isArray(raw) ? raw[0] : raw).trim().toUpperCase();
+  const code = getHeader(headers, "x-vercel-ip-country") || getHeader(headers, "cf-ipcountry") || getHeader(headers, "x-country-code");
   return /^[A-Z]{2}$/.test(code) ? code : "";
+}
+
+function getHeader(headers = {}, key) {
+  const raw = headers[key] || "";
+  return String(Array.isArray(raw) ? raw[0] : raw).trim();
+}
+
+function decodeHeaderValue(value) {
+  if (!value) return "";
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

@@ -70,7 +70,8 @@ bootstrap();
 
 async function bootstrap() {
   initThemeMode();
-  await hydrateHourFormatFromServer();
+  const viewerContext = await hydrateHourFormatFromServer();
+  applyViewerDrivenDefaults(viewerContext);
   hydrateStateFromUrl();
   ensureDefaultSelection();
   wireEvents();
@@ -475,7 +476,7 @@ async function hydrateHourFormatFromServer() {
     const response = await fetch("/api/viewer-hour-format", { headers: { Accept: "application/json" } });
     if (!response.ok) {
       console.info("[when-there] hour format source=fallback-browser reason=http", response.status, userHourFormat);
-      return;
+      return null;
     }
     const data = await response.json();
     if (data?.hourFormat === "24h" || data?.hourFormat === "12h") {
@@ -487,10 +488,52 @@ async function hydrateHourFormatFromServer() {
       data?.countryCode || "unknown",
       userHourFormat
     );
+    return data;
   } catch {
     // Local static dev and non-Vercel hosts may not have this endpoint.
     console.info("[when-there] hour format source=fallback-browser reason=unavailable format=%s", userHourFormat);
+    return null;
   }
+}
+
+function applyViewerDrivenDefaults(viewerContext) {
+  const defaultPortland = { timeZone: "America/Los_Angeles", title: "Portland", subtitle: "United States, OR" };
+  const defaultThailand = { timeZone: "Asia/Bangkok", title: "Bangkok", subtitle: "Thailand" };
+
+  const viewerZone = buildViewerDefaultZone(viewerContext);
+  const pinned = [viewerZone || DEFAULT_ZONES[0], defaultPortland, defaultThailand].filter(Boolean);
+  const remaining = DEFAULT_ZONES.filter(
+    (zone) => zone.timeZone !== defaultPortland.timeZone && !pinned.some((p) => p.timeZone === zone.timeZone)
+  );
+  const ordered = [...pinned, ...remaining];
+
+  state.zones = ordered.map((zone) => ensureZoneEntry(zone));
+  state.selected = null;
+}
+
+function buildViewerDefaultZone(viewerContext) {
+  if (!viewerContext || typeof viewerContext !== "object") return null;
+
+  const timeZone = String(viewerContext.timeZone || "").trim();
+  if (!timeZone || !isValidTimeZone(timeZone)) return null;
+
+  const fallbackMeta = buildZoneMeta(timeZone);
+  const city = String(viewerContext.city || "").trim();
+  const countryCode = String(viewerContext.countryCode || "").trim().toUpperCase();
+  const regionCode = String(viewerContext.regionCode || "").trim().toUpperCase();
+
+  let subtitle = fallbackMeta.subtitle;
+  if (countryCode && regionCode) {
+    subtitle = `${countryCode}, ${regionCode}`;
+  } else if (countryCode) {
+    subtitle = countryCode;
+  }
+
+  return {
+    timeZone,
+    title: city || fallbackMeta.title,
+    subtitle
+  };
 }
 
 function detectUserHourFormat() {
