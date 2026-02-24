@@ -8,6 +8,13 @@ const COLUMN_FILL_MS = 100;
 const ADD_FADE_MS = 100;
 const THEME_STORAGE_KEY = "when-there-theme";
 const THEME_MODES = ["system", "light", "dark"];
+const EUROPE_REGION_CODES = new Set([
+  "AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+  "DE", "GR", "HU", "IS", "IE", "IT", "XK", "LV", "LI", "LT", "LU", "MT", "MD", "MC",
+  "ME", "NL", "MK", "NO", "PL", "PT", "RO", "RU", "SM", "RS", "SK", "SI", "ES", "SE",
+  "CH", "UA", "GB", "VA"
+]);
+let userHourFormat = detectUserHourFormat();
 
 const DEFAULT_ZONES = [
   { timeZone: "America/Los_Angeles", title: "Portland", subtitle: "United States, OR" },
@@ -61,8 +68,9 @@ const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 bootstrap();
 
-function bootstrap() {
+async function bootstrap() {
   initThemeMode();
+  await hydrateHourFormatFromServer();
   hydrateStateFromUrl();
   ensureDefaultSelection();
   wireEvents();
@@ -436,14 +444,15 @@ function getDateTimeFormatter(timeZone, options) {
 }
 
 function formatZoneNow(timeZone) {
-  return getDateTimeFormatter(timeZone, {
+  const formatted = getDateTimeFormatter(timeZone, {
     hour: "numeric",
     minute: "2-digit",
-    hour12: true
-  })
-    .format(new Date())
-    .toUpperCase()
-    .replace(/\s/g, "");
+    hour12: userHourFormat === "12h"
+  }).format(new Date());
+
+  return userHourFormat === "12h"
+    ? formatted.toUpperCase().replace(/\s/g, "")
+    : formatted;
 }
 
 function startLiveClock() {
@@ -453,9 +462,81 @@ function startLiveClock() {
 }
 
 function formatHour(hour) {
+  if (userHourFormat === "24h") {
+    return `${String(hour).padStart(2, "0")}:00`;
+  }
   const period = hour >= 12 ? "PM" : "AM";
   const h = hour % 12 || 12;
   return `${h} ${period}`;
+}
+
+async function hydrateHourFormatFromServer() {
+  try {
+    const response = await fetch("/api/viewer-hour-format", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      console.info("[when-there] hour format source=fallback-browser reason=http", response.status, userHourFormat);
+      return;
+    }
+    const data = await response.json();
+    if (data?.hourFormat === "24h" || data?.hourFormat === "12h") {
+      userHourFormat = data.hourFormat;
+    }
+    console.info(
+      "[when-there] hour format source=%s country=%s format=%s",
+      data?.source || "server",
+      data?.countryCode || "unknown",
+      userHourFormat
+    );
+  } catch {
+    // Local static dev and non-Vercel hosts may not have this endpoint.
+    console.info("[when-there] hour format source=fallback-browser reason=unavailable format=%s", userHourFormat);
+  }
+}
+
+function detectUserHourFormat() {
+  const timeZone = getViewerTimeZone();
+  if (timeZone.startsWith("Europe/")) return "24h";
+  if (timeZone.startsWith("America/")) return "12h";
+
+  const region = getViewerRegionCode();
+  if (region && EUROPE_REGION_CODES.has(region)) return "24h";
+  if (region && ["US", "CA", "MX", "BR", "AR", "CL", "CO", "PE", "VE"].includes(region)) return "12h";
+
+  return "12h";
+}
+
+function getViewerTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
+
+function getViewerRegionCode() {
+  const locales = Array.isArray(navigator.languages) && navigator.languages.length > 0
+    ? navigator.languages
+    : [navigator.language].filter(Boolean);
+
+  for (const locale of locales) {
+    const region = extractRegionFromLocale(locale);
+    if (region) return region;
+  }
+  return "";
+}
+
+function extractRegionFromLocale(locale) {
+  try {
+    if (typeof Intl.Locale === "function") {
+      const region = new Intl.Locale(locale).maximize().region || new Intl.Locale(locale).region;
+      if (region) return region.toUpperCase();
+    }
+  } catch {
+    // ignore unsupported Intl.Locale
+  }
+
+  const match = String(locale).match(/[-_]([A-Za-z]{2}|\d{3})(?:[-_]|$)/);
+  return match ? match[1].toUpperCase() : "";
 }
 
 function isDayHour(hour) {
