@@ -105,7 +105,10 @@ function wireEvents() {
     if (addZonePanel.contains(target) || addZoneButton.contains(target)) return;
     closeAddZonePanel();
   });
-  window.addEventListener("resize", updateHighlights);
+  window.addEventListener("resize", () => {
+    updateHighlights();
+    updateCurrentTimeLines();
+  });
   if (typeof systemThemeQuery.addEventListener === "function") {
     systemThemeQuery.addEventListener("change", handleSystemThemeChange);
   } else if (typeof systemThemeQuery.addListener === "function") {
@@ -215,6 +218,10 @@ function render(previousRects = null, options = {}) {
     selectionBar.className = "selection-bar";
     selectionBar.setAttribute("aria-hidden", "true");
     hoursEl.append(selectionBar);
+    const currentTimeLine = document.createElement("div");
+    currentTimeLine.className = "current-time-line";
+    currentTimeLine.setAttribute("aria-hidden", "true");
+    hoursEl.append(currentTimeLine);
     const rowsByHour = [];
 
     for (const hour of HOURS) {
@@ -246,11 +253,12 @@ function render(previousRects = null, options = {}) {
     liveClock.textContent = formatZoneNow(zone.timeZone);
     titleWrapEl.append(liveClock);
 
-    columnViews.push({ zone, column, hoursEl, rowsByHour, liveClock, selectionBar });
+    columnViews.push({ zone, column, hoursEl, rowsByHour, liveClock, selectionBar, currentTimeLine });
     timelineEl.append(column);
   }
 
   updateHighlights();
+  updateCurrentTimeLines();
   animateColumnFill(previousRects, options);
 }
 
@@ -868,6 +876,41 @@ function reorderZones(sourceZoneId, targetZoneId, position) {
 function updateClocks() {
   for (const view of columnViews) {
     view.liveClock.textContent = formatZoneNow(view.zone.timeZone);
+  }
+  updateCurrentTimeLines();
+}
+
+function getLocalHourMinute(timeZone, atMs = Date.now()) {
+  const parts = getDateTimeFormatter(timeZone, {
+    hour12: false,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).formatToParts(new Date(atMs));
+  const hourPart = parts.find((part) => part.type === "hour");
+  const minutePart = parts.find((part) => part.type === "minute");
+  return {
+    hour: Number(hourPart?.value ?? 0),
+    minute: Number(minutePart?.value ?? 0)
+  };
+}
+
+function updateCurrentTimeLines(nowMs = Date.now()) {
+  const date = new Date(nowMs);
+  const secondFraction = (date.getUTCSeconds() + date.getUTCMilliseconds() / 1000) / 60;
+
+  for (const view of columnViews) {
+    const { hour, minute } = getLocalHourMinute(view.zone.timeZone, nowMs);
+    const row = view.rowsByHour[hour];
+    if (!row) {
+      view.currentTimeLine.classList.remove("visible");
+      continue;
+    }
+
+    const minuteProgress = Math.min(0.999, (minute + secondFraction) / 60);
+    const y = row.offsetTop + row.offsetHeight * minuteProgress;
+    view.currentTimeLine.style.transform = `translateY(${y}px)`;
+    view.currentTimeLine.classList.add("visible");
   }
 }
 
