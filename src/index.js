@@ -7,6 +7,7 @@ const REMOVE_MOVE_DELAY_MS = 60;
 const COLUMN_FILL_MS = 100;
 const ADD_FADE_MS = 100;
 const THEME_STORAGE_KEY = "when-there-theme";
+const PROMO_BANNER_DISMISSED_STORAGE_KEY = "when-there-promo-banner-dismissed-v1";
 const LOCAL_APP_STATE_STORAGE_KEY = "when-there-local-app-state";
 const ZONES_PREFERENCE_STORAGE_KEY = "when-there-zones-preference";
 const VIEWER_ZONE_OVERRIDE_STORAGE_KEY = "when-there-viewer-zone-override";
@@ -36,6 +37,8 @@ const state = {
 };
 
 const timelineEl = document.querySelector("#timeline");
+const promoBannerEl = document.querySelector("#promo-banner");
+const promoBannerCloseButton = document.querySelector("#promo-banner-close");
 const addZoneButton = document.querySelector("#add-zone-button");
 const themeToggleButton = document.querySelector("#theme-toggle-button");
 const shareStateButton = document.querySelector("#share-state-button");
@@ -73,6 +76,7 @@ bootstrap();
 
 async function bootstrap() {
   initThemeMode();
+  initPromoBanner();
   const viewerContext = await hydrateHourFormatFromServer();
   const hasSharedState = urlHasSharedStateParam();
   applyViewerDrivenDefaults(viewerContext);
@@ -93,6 +97,7 @@ async function bootstrap() {
 }
 
 function wireEvents() {
+  promoBannerCloseButton?.addEventListener("click", dismissPromoBanner);
   addZoneButton.addEventListener("click", () => {
     if (addZonePanel.hidden) {
       openAddZonePanel();
@@ -136,6 +141,18 @@ function wireEvents() {
   } else if (typeof systemThemeQuery.addListener === "function") {
     systemThemeQuery.addListener(handleSystemThemeChange);
   }
+}
+
+function initPromoBanner() {
+  if (!promoBannerEl) return;
+  const isDismissed = window.localStorage.getItem(PROMO_BANNER_DISMISSED_STORAGE_KEY) === "1";
+  promoBannerEl.hidden = isDismissed;
+}
+
+function dismissPromoBanner() {
+  if (!promoBannerEl) return;
+  promoBannerEl.hidden = true;
+  window.localStorage.setItem(PROMO_BANNER_DISMISSED_STORAGE_KEY, "1");
 }
 
 function initThemeMode() {
