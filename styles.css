@@ -193,9 +193,7 @@
 
   .promo-banner {
     border-color: rgba(21, 25, 34, 0.1);
-    background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(240, 244, 251, 0.94)),
-      rgba(255, 255, 255, 0.94);
+    background: rgba(255, 255, 255, 0.94);
     box-shadow: 0 10px 30px rgba(21, 25, 34, 0.08);
   }
 
@@ -265,10 +263,8 @@ body {
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  background:
-    linear-gradient(135deg, rgba(17, 20, 26, 0.96), rgba(10, 11, 13, 0.98)),
-    rgba(10, 11, 13, 0.96);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+  background: rgba(10, 11, 13, 0.98);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
   overflow: hidden;
 }
 
@@ -291,7 +287,7 @@ body {
   position: absolute;
   border-radius: 50%;
   filter: blur(40px);
-  opacity: 0.5;
+  opacity: 0.28;
   will-change: transform;
 }
 
@@ -338,7 +334,7 @@ body {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  opacity: 0.35;
+  opacity: 0.14;
 }
 
 .promo-grid-line {
@@ -385,9 +381,9 @@ body {
     105deg,
     transparent 0%,
     transparent 40%,
-    rgba(255, 255, 255, 0.02) 45%,
-    rgba(255, 255, 255, 0.04) 50%,
-    rgba(255, 255, 255, 0.02) 55%,
+    rgba(255, 255, 255, 0.015) 45%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.015) 55%,
     transparent 60%,
     transparent 100%
   );
@@ -400,7 +396,7 @@ body {
 .promo-noise {
   position: absolute;
   inset: 0;
-  opacity: 0.3;
+  opacity: 0.12;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
   background-size: 128px 128px;
@@ -415,7 +411,7 @@ body {
 .promo-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 23px;
   font-weight: 400;
   line-height: 1.2;
   letter-spacing: 0;
@@ -1220,7 +1216,7 @@ main {
   }
 
   .promo-title {
-    font-size: 17px;
+    font-size: 19px;
   }
 
   .promo-actions {
