@@ -60,7 +60,13 @@
               alt="Download on the Mac App Store"
             />
           </a>
-          <button id="promo-banner-close" class="promo-close" type="button" aria-label="Dismiss app promotion">
+          <button
+            id="promo-banner-close"
+            class="promo-close"
+            type="button"
+            aria-label="Dismiss app promotion"
+            onclick="this.closest('#promo-banner')?.setAttribute('hidden', ''); window.whenThereDismissPromoBanner?.(); return false;"
+          >
             <span aria-hidden="true">×</span>
           </button>
         </div>

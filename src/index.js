@@ -77,6 +77,7 @@ bootstrap();
 async function bootstrap() {
   initThemeMode();
   initPromoBanner();
+  window.whenThereDismissPromoBanner = dismissPromoBanner;
   const viewerContext = await hydrateHourFormatFromServer();
   const hasSharedState = urlHasSharedStateParam();
   applyViewerDrivenDefaults(viewerContext);
