@@ -307,6 +307,10 @@ body {
   outline: none;
 }
 
+.promo-badge-link {
+  flex: 0 0 auto;
+}
+
 .promo-badge {
   display: block;
   height: 40px;
@@ -314,6 +318,9 @@ body {
 }
 
 .promo-close {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   width: 30px;
   min-height: 30px;
   padding: 0;

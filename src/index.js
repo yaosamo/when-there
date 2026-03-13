@@ -97,7 +97,8 @@ async function bootstrap() {
 }
 
 function wireEvents() {
-  promoBannerCloseButton?.addEventListener("click", dismissPromoBanner);
+  promoBannerCloseButton?.addEventListener("pointerdown", handlePromoBannerClosePress);
+  promoBannerCloseButton?.addEventListener("click", handlePromoBannerClosePress);
   addZoneButton.addEventListener("click", () => {
     if (addZonePanel.hidden) {
       openAddZonePanel();
@@ -127,10 +128,16 @@ function wireEvents() {
     }
   });
   document.addEventListener("pointerdown", (event) => {
+    if (event.target instanceof Element && event.target.closest("#promo-banner-close")) return;
     if (addZonePanel.hidden) return;
     const target = event.target;
     if (addZonePanel.contains(target) || addZoneButton.contains(target)) return;
     closeAddZonePanel();
+  });
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (!event.target.closest("#promo-banner-close")) return;
+    dismissPromoBanner();
   });
   window.addEventListener("resize", () => {
     updateHighlights();
@@ -153,6 +160,12 @@ function dismissPromoBanner() {
   if (!promoBannerEl) return;
   promoBannerEl.hidden = true;
   window.localStorage.setItem(PROMO_BANNER_DISMISSED_STORAGE_KEY, "1");
+}
+
+function handlePromoBannerClosePress(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  dismissPromoBanner();
 }
 
 function initThemeMode() {
