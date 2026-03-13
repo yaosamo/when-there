@@ -42,7 +42,7 @@
       <p class="site-credit">
         Designed by Yaosamo
       </p>
-      <section class="promo-banner" id="promo-banner" aria-label="Yaosamo Time app promotion">
+      <section class="promo-banner" id="promo-banner" aria-label="Yaosamo Time app promotion" hidden>
         <div class="promo-orb promo-orb-1" aria-hidden="true"></div>
         <div class="promo-orb promo-orb-2" aria-hidden="true"></div>
         <div class="promo-orb promo-orb-3" aria-hidden="true"></div>
@@ -79,7 +79,7 @@
             class="promo-close"
             type="button"
             aria-label="Dismiss app promotion"
-            onclick="this.closest('#promo-banner')?.setAttribute('hidden', ''); window.whenThereDismissPromoBanner?.(); return false;"
+            onclick="window.whenThereDismissPromoBanner?.(); return false;"
           >
             <span aria-hidden="true">×</span>
           </button>

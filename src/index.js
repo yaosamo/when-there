@@ -6,6 +6,8 @@ const REMOVE_FADE_MS = 100;
 const REMOVE_MOVE_DELAY_MS = 60;
 const COLUMN_FILL_MS = 100;
 const ADD_FADE_MS = 100;
+const PROMO_BANNER_SHOW_DELAY_MS = 2000;
+const PROMO_BANNER_TRANSITION_MS = 320;
 const THEME_STORAGE_KEY = "when-there-theme";
 const PROMO_BANNER_DISMISSED_STORAGE_KEY = "when-there-promo-banner-dismissed-v1";
 const LOCAL_APP_STATE_STORAGE_KEY = "when-there-local-app-state";
@@ -70,6 +72,8 @@ let dragState = null;
 let themeMode = "system";
 let fistBumpOverlayEl = null;
 let fistBumpOverlayTimer = 0;
+let promoBannerShowTimer = 0;
+let promoBannerHideTimer = 0;
 const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 bootstrap();
@@ -154,19 +158,37 @@ function wireEvents() {
 function initPromoBanner() {
   if (!promoBannerEl) return;
   const isDismissed = window.localStorage.getItem(PROMO_BANNER_DISMISSED_STORAGE_KEY) === "1";
-  promoBannerEl.hidden = isDismissed;
-}
-
-function dismissPromoBanner() {
-  if (!promoBannerEl) return;
+  promoBannerEl.classList.remove("is-visible");
   promoBannerEl.hidden = true;
-  window.localStorage.setItem(PROMO_BANNER_DISMISSED_STORAGE_KEY, "1");
+  if (isDismissed) return;
+
+  window.clearTimeout(promoBannerShowTimer);
+  promoBannerShowTimer = window.setTimeout(showPromoBanner, PROMO_BANNER_SHOW_DELAY_MS);
 }
 
 function handlePromoBannerClosePress(event) {
   event.preventDefault();
   event.stopPropagation();
   dismissPromoBanner();
+}
+
+function showPromoBanner() {
+  if (!promoBannerEl) return;
+  promoBannerEl.hidden = false;
+  window.requestAnimationFrame(() => {
+    promoBannerEl.classList.add("is-visible");
+  });
+}
+
+function dismissPromoBanner() {
+  if (!promoBannerEl) return;
+  window.clearTimeout(promoBannerShowTimer);
+  window.clearTimeout(promoBannerHideTimer);
+  promoBannerEl.classList.remove("is-visible");
+  window.localStorage.setItem(PROMO_BANNER_DISMISSED_STORAGE_KEY, "1");
+  promoBannerHideTimer = window.setTimeout(() => {
+    promoBannerEl.hidden = true;
+  }, PROMO_BANNER_TRANSITION_MS);
 }
 
 function initThemeMode() {

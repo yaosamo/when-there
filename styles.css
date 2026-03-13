@@ -266,6 +266,18 @@ body {
   background: rgba(10, 11, 13, 0.98);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
   overflow: hidden;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.985);
+  transition:
+    opacity 320ms ease,
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.promo-banner.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 .promo-banner:hover .promo-orb {
